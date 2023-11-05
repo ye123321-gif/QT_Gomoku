@@ -3,10 +3,10 @@
 #include <iostream>
 #include <QMouseEvent>
 #include <qdebug.h>
-
+#include <QMessageBox>
 using namespace std;
-static int bwidth = 0 ;
-static int bheight = 0;
+static int bwidth = 0 ; //piece width
+static int bheight = 0; //piece height
 ChessBoard::ChessBoard(QWidget *parent) : QWidget(parent)
 {
     curX = -1;
@@ -17,17 +17,15 @@ ChessBoard::ChessBoard(QWidget *parent) : QWidget(parent)
 bool ChessBoard::winCheck(void *ChessBoard, Pieces curRole)
 {
     Pieces (*chessBoard)[15];
-    chessBoard = (Pieces (*)[15])this->chessBoard;
-    //qDebug() << "here " << curRole << endl;
+    chessBoard = (Pieces (*)[15])ChessBoard;
+    //In gomoku, we only need to ensure there are 5 pieces with same color connected together
+    int check = 0;
 
-    int check = 0; //In gomoku, we only need to ensure there are 5 pieces with same color connected together
     //horizontal & vertical check
     int left = curX;
     int right = curX;
     int up = curY;
     int down = curY;
-
-
 
     int diagLeft = curX;
     int diagRight = curX;
@@ -38,6 +36,9 @@ bool ChessBoard::winCheck(void *ChessBoard, Pieces curRole)
     int diagRightBtoTright = curX;
     int tempYLeftBtoTright = curY;
     int tempYRightBtoTright = curY;
+    bool win = false;
+
+    //checking if on a row/column/diagonal there is 5 same colour consecutive pieces
     while(check < 5){
         //horizontal
         if(left >=0 && chessBoard[left][curY] == curRole){
@@ -72,25 +73,45 @@ bool ChessBoard::winCheck(void *ChessBoard, Pieces curRole)
             diagRightBtoTright++;
             tempYRightBtoTright--;
         }
-        //qDebug() << left << ":" << right << "-" << up << ":" << down << "-" << diagLeft << ":" << diagRight<< endl;
         check++;
     }
-    if(right - left - 1 >= 5){ // -1 because above process counted current piece twice
-        return true;
-    }
-    else if(down - up - 1 >= 5){
-        return true;
-    }
-    else if(diagRight - diagLeft - 1 >= 5){
-        return true;
-    }
-    else if(diagRightBtoTright - diagLeftBtoTright - 1 >= 5){
-        return true;
+    if((right - left - 1 >= 5) ||
+            (down - up - 1 >= 5) ||
+            (diagRight - diagLeft - 1 >= 5) ||
+            (diagRightBtoTright - diagLeftBtoTright - 1 >= 5)){ // -1 because above process counted current piece twice
+        win = true;
     }
 
-    return false;
-    //vertical
-    //diagonal
+    if(win){
+        QString str = "";
+        switch (curRole) {
+        case WHITE:
+            str = "Player with white piece wins";
+            break;
+        case BLACK:
+            str = "Player with black piece wins";
+            break;
+        }
+        emit chessGameOver();
+        QMessageBox::information(this, "Congratulations!", str);
+    }
+    gameOver = win;
+    return win;
+}
+
+void ChessBoard::setDirectWinner(Pieces curRole)
+{
+    QString str = "";
+    switch (curRole) {
+    case WHITE:
+        str = "Player with white piece wins";
+        break;
+    case BLACK:
+        str = "Player with black piece wins";
+        break;
+    }
+    QMessageBox::information(this, "Congratulations!", str);
+    gameOver = true;
 }
 
 void ChessBoard::setBoard(int curX, int curY, void *chessBoard)
@@ -101,6 +122,9 @@ void ChessBoard::setBoard(int curX, int curY, void *chessBoard)
     update();
 }
 
+/* This function draws the chess board
+ * It's called whenever there's update to the chess board
+ */
 void ChessBoard::paintEvent(QPaintEvent *)
 {
     spaceX = this->width() / (GOMOKU_ROW + 1); //add 1 here to allow the pieces being fully draw to the board
@@ -161,23 +185,10 @@ void ChessBoard::paintEvent(QPaintEvent *)
     }
 #endif
 
+    //Mark the previous move
     pen.setWidth(1);
     pen.setColor(Qt::green);
     p.setPen(pen);
-    //p.drawRect(spaceX*15 - (blackPiece.width() / 2),spaceY - (blackPiece.height() / 2),
-    //                 blackPiece.width(),blackPiece.height());
-#if EXAMPLE
-    cout << spaceX << ":" << spaceY << " " << spaceX - (blackPiece.width() / 2) << ":" << spaceY - (blackPiece.height() / 2) << endl;
-    p.drawPixmap(spaceX + spaceX - (blackPiece.width() / 2), spaceY + spaceY - (blackPiece.height() / 2), blackPiece);
-    p.drawPixmap(spaceX - (blackPiece.width() / 2), spaceY + spaceY - (blackPiece.height() / 2), blackPiece);
-
-    p.drawPixmap(spaceX + 14 * spaceX - (blackPiece.width() / 2), spaceY - (blackPiece.height() / 2), blackPiece);
-    pen.setWidth(1);
-    pen.setColor(Qt::green);
-    p.setPen(pen);
-    p.drawRect(spaceX - (blackPiece.width() / 2),spaceY + spaceY - (blackPiece.height() / 2),
-                     blackPiece.width(),blackPiece.height());
-#endif
 
     if(curX != -1 && curY != -1){
         p.drawRect(spaceX + spaceX * curX - bwidth,spaceY + spaceY * curY- bheight, blackPiece.width(),blackPiece.height()); // curX or curY can be 0
@@ -186,23 +197,16 @@ void ChessBoard::paintEvent(QPaintEvent *)
 
 void ChessBoard::mousePressEvent(QMouseEvent *e)
 {
-    //qDebug() << spaceX << ":" << spaceY << endl;
-    //qDebug() << spaceX * 15 << ":" << spaceY * 15 << endl;
     if(e->button() == Qt::LeftButton){
-        //qDebug() << "Left Mouse pressed" << e->x() <<"," << e->y()<< endl;
+        //Shouldn't response to user mouse movement when the game is over
+        if(gameOver == true){
+            return;
+        }
 
-        //qDebug() << spaceX * 15 + bwidth << " " << spaceX * 15 - bwidth << " " << spaceY + bheight << spaceY - bheight << endl;
-#if 0
-        if(e->x() <= spaceX * 15 + bwidth &&  e->x() >= spaceX * 15 - bwidth
-                && e->y() <= spaceY + bheight && e->y() >= spaceY - bheight ){
-            a = 1;
-            update();
-#endif  }
         if(e->x() >= spaceX - bwidth && e->x() <= spaceX * 15 + bwidth
                 && e->y() >= spaceY - bheight && e->y() <= spaceY * 15 + bheight)
         {
-            //qDebug() << "available" << endl;
-            qDebug() << "here: " << (e->x() - bwidth) / spaceX << " " << (e->y() - bheight) / spaceY << endl; // converts mouse pos to coordinates on the chessBoard
+            // converts mouse pos to coordinates on the chessBoard
             emit(pressedCoordinateXY((e->x() - bwidth) / spaceX , (e->y() - bheight) / spaceY));
         }
 

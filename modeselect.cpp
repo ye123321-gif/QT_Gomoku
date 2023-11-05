@@ -3,20 +3,37 @@
 #include <qdebug.h>
 #include <QMessageBox>
 #include <iostream>
+#include <QDesktopWidget>
+
+#define HOST_PORT 8888
 using namespace std;
 modeSelect::modeSelect(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::modeSelect)
 {
     ui->setupUi(this);
-    initUdpSocket(8888);
+    //bind port 8888 to current host ip
+    initUdpSocket(HOST_PORT);
     QPixmap backgroundImage(":/image/background.jpg");
     ui->background->setPixmap(backgroundImage);
     ui->background->setScaledContents(true);
 
+    connect(&mw, &mainwidget::closeMainWidget,
+    [&]()
+    {
+        mw.hide();
+        ui->stackedWidget->setCurrentWidget(ui->pageMode);
+        this->show();
+
+        //display the window at the center of the screen
+        QDesktopWidget* desktop = QApplication::desktop();
+        this->move((desktop->width() - this->width())/2, (desktop->height() - this->height())/2);
+    }
+    );
+
     connect(&mw, &mainwidget::onlineCoordinateXY, [&](int x, int y){
-        //qDebug() << "play" << endl;
-        //"cmd=play&x=1&y=1"
+
+        //example command: "cmd=play&x=1&y=1"
         QString str = QString("cmd=play&x=%1&y=%2").arg(x).arg(y);
 
         QString ip = ui->lineEdit_ip->text();
@@ -31,7 +48,7 @@ void modeSelect::initUdpSocket(short port)
 {
 
     udpsocket = new QUdpSocket(this);  //Store in the children list of modeSelect class
-                                 //When freeing the modeSelect Class object, it will call the destructors for the udpsocket
+                                       //When freeing the modeSelect Class object, it will call the destructors for the udpsocket
     if(udpsocket == NULL)
     {
         cout << "new QUdpSocket err";
@@ -39,7 +56,7 @@ void modeSelect::initUdpSocket(short port)
     }
 
     //binding ports and make it reusable
-    if( false == udpsocket->bind(port, QUdpSocket::ShareAddress) )
+    if(false == udpsocket->bind(port, QUdpSocket::ShareAddress))
     {
         cout << "bind err";
         return;
@@ -52,12 +69,11 @@ void modeSelect::initUdpSocket(short port)
                 char buf[1500] = {0};
                 QHostAddress addr;
                 quint16 port;
-                udpsocket->readDatagram(buf, sizeof(buf), &addr, &port); //接收数据
-                //qDebug() << "buf: " << buf << endl;
+                //receive data packet
+                udpsocket->readDatagram(buf, sizeof(buf), &addr, &port);
                 ui->lineEdit_ip->setText(addr.toString());
                 ui->lineEdit_port->setText(QString::number(port));
 
-                qDebug() << "buf = " << buf << endl;
                 interpretUdpPacket(buf);//handle udp packets
             }
     );
@@ -65,19 +81,18 @@ void modeSelect::initUdpSocket(short port)
 
 void modeSelect::interpretUdpPacket(char *buf)
 {
-    //Connection request          "cmd=connect&role=black"
-    //Connection has established      "cmd=ok"
-    //play moves            "cmd=play&x=1&y=1"
+    //Connection request example:              "cmd=connect&role=black"
+    //Connection has established example:      "cmd=ok"
+    //play moves example:                      "cmd=play&x=1&y=1"
     QString str = buf;
 
-    QString tmp = str.section("&", 0, 0);
+    QString tmp = str.section("&", 0, 0); //"cmd=xxx&xxx"
     QString cmd = tmp.section("=", 1, 1);
-    //qDebug() << "cmd = " << cmd;
 
     if(cmd == "connect")
     { //connection request
 
-        tmp = str.section("&", 1, 1); // "role=black"
+        tmp = str.section("&", 1, 1); //"role=black"
         str = tmp.section("=", 1, 1); //"black"
 
         QString ip = ui->lineEdit_ip->text();
@@ -108,7 +123,6 @@ void modeSelect::interpretUdpPacket(char *buf)
     else if(cmd == "ok")
     {//Player has established connection
         QMessageBox::information(this, "Request for a Gomoku game", "Other player has connected");
-        //qDebug() << "ok" << endl;
         this->hide();
 
         if(ui->radioButton_black->isChecked())
@@ -120,6 +134,11 @@ void modeSelect::interpretUdpPacket(char *buf)
              mw.setMyRole(WHITE);
         }
         this->hide();
+        QString ip = ui->lineEdit_ip->text();
+        short port = ui->lineEdit_port->text().toShort();
+        //To sychronize timer on both player screen
+        udpsocket->writeDatagram("cmd=startTimer", strlen("cmd=startTimer"), QHostAddress(ip), port);
+        mw.startBlackTimer(1000);
         mw.show();
     }
     else if(cmd == "play")
@@ -132,9 +151,11 @@ void modeSelect::interpretUdpPacket(char *buf)
 
         mw.networkPlay(x, y);
     }
-
-    if(udpsocket->hasPendingDatagrams()){
-        qDebug() << "error" << endl;
+    else if(cmd == "startTimer"){
+        mw.startBlackTimer(1000);
+    }
+    else if(cmd == "redraw"){
+        /* working on it */
     }
 }
 
@@ -151,6 +172,8 @@ void modeSelect::on_Exit_clicked()
 void modeSelect::on_TwoPlayer_clicked()
 {
     mw.show();
+    mw.setMode(TwoPlayer);
+    mw.startBlackTimer(1000);
     this->hide();
 }
 
@@ -175,16 +198,16 @@ void modeSelect::on_pushButton_submit_clicked()
     //"cmd=connect&role=black"
     QString str;
     if(ui->radioButton_black->isChecked())
-    {//Player sending connection selects black
+    {
+        //Player sending connection selects black
         str = "cmd=connect&role=black";
-        //mw.setMyRole(BLACK);
     }
     else if(ui->radioButton_white->isChecked())
-    {//selects white
+    {
+        //selects white
         str = "cmd=connect&role=white";
-        //mw.setMyRole(WHITE);
     }
-    //qDebug() << str << endl;
+
     //Sending connection request
     udpsocket->writeDatagram(str.toUtf8(), QHostAddress(ip), port);
 }
@@ -199,6 +222,7 @@ void modeSelect::on_pushButton_Black_clicked()
 {
     mw.setMyRole(BLACK);
     mw.show();
+    mw.startBlackTimer(1000);
     this->hide();
 }
 
@@ -206,5 +230,6 @@ void modeSelect::on_pushButton_White_clicked()
 {
     mw.setMyRole(WHITE);
     mw.show();
+    mw.startBlackTimer(1000);
     this->hide();
 }
