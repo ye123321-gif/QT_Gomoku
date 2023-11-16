@@ -24,7 +24,7 @@ modeSelect::modeSelect(QWidget *parent) :
         mw.hide();
         ui->stackedWidget->setCurrentWidget(ui->pageMode);
         this->show();
-
+        mw.clearBoard();
         //display the window at the center of the screen
         QDesktopWidget* desktop = QApplication::desktop();
         this->move((desktop->width() - this->width())/2, (desktop->height() - this->height())/2);

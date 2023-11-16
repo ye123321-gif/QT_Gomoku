@@ -19,6 +19,7 @@ public:
     void networkPlay(int x, int y);
     void machinePlay();
     void stopExistingTimers();
+    void clearBoard();
     ~mainwidget();
 signals:
     void closeMainWidget();

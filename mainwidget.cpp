@@ -5,7 +5,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <unistd.h>
-#define TIME_LIMIT 10
+#define TIME_LIMIT 30
 mainwidget::mainwidget(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::mainwidget)
@@ -229,6 +229,13 @@ void mainwidget::stopExistingTimers()
     if(WhiteTimer.isActive()){
         WhiteTimer.stop();
     }
+}
+
+void mainwidget::clearBoard()
+{
+    memset(gameBoard, EMPTY, sizeof(gameBoard));
+    ui->chessBoard->setBoard(-1, -1, gameBoard);
+    timelimit = TIME_LIMIT;
 }
 
 void mainwidget::setMode(PlayMode mode)
